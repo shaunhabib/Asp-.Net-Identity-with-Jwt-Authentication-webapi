@@ -29,10 +29,11 @@ namespace Asp.Net_Identity.Controllers
         [HttpGet]
         public IActionResult GetCurrentUser()
         {
-            var UserId = _httpContextAccessor.HttpContext?.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            var email = _httpContextAccessor.HttpContext?.User?.FindFirst(ClaimTypes.Email)?.Value;
-            var userName = _httpContextAccessor.HttpContext?.User?.FindFirst("UserName")?.Value;
-            var Token = _httpContextAccessor.HttpContext?.Request.Headers["Authorization"];
+            string UserId = _httpContextAccessor.HttpContext?.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            string email = _httpContextAccessor.HttpContext?.User?.FindFirst(ClaimTypes.Email)?.Value;
+            string userName = _httpContextAccessor.HttpContext?.User?.FindFirst("UserName")?.Value;
+            string Token = _httpContextAccessor.HttpContext?.Request.Headers["Authorization"];
+
             var result = new UserInfo
             {
                 UserId = UserId,
@@ -40,6 +41,7 @@ namespace Asp.Net_Identity.Controllers
                 Email = email,
                 Token = Token
             };
+
             return Ok(result);
         }
 
