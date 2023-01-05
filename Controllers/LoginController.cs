@@ -71,6 +71,22 @@ namespace Asp.Net_Identity.Controllers
             return Ok("Reset password token has been sent. Please check your email");
         }
 
+        [HttpPost]
+        public async Task<IActionResult> ResetPassword(string email, string token, [FromBody]ResetPasswordVm model)
+        {
+            if(!ModelState.IsValid)
+                return BadRequest("Model state is invalid");
+
+            var result = await ResetPasswordAsync(email, token, model);
+
+            if(result) 
+                return Ok("Password has been reset successfully");
+
+            return BadRequest("Failed to reset password");
+        }
+
+
+
 
         private string GenerateToken(IdentityUser user)
         {
@@ -114,6 +130,21 @@ namespace Asp.Net_Identity.Controllers
             return true;  
         }
 
+        private async Task<bool> ResetPasswordAsync(string email, string token ,ResetPasswordVm model)
+        {
+            var user = await _userManager.FindByEmailAsync(email);
+            if(user is null)
+              return false;
 
+            //Decripting token
+            var decodedToken = WebEncoders.Base64UrlDecode(token);
+            string normalToken = Encoding.UTF8.GetString(decodedToken);
+
+            var result = await _userManager.ResetPasswordAsync(user, normalToken, model.NewPassword);
+            if(result.Succeeded)
+                return true;
+
+            return false;
+        }
     }
 }
