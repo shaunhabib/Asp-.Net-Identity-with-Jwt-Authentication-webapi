@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IdentityModel.Tokens.Jwt;
 using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
@@ -32,11 +33,13 @@ namespace Asp.Net_Identity.Controllers
             string UserId = _httpContextAccessor.HttpContext?.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             string email = _httpContextAccessor.HttpContext?.User?.FindFirst(ClaimTypes.Email)?.Value;
             string userName = _httpContextAccessor.HttpContext?.User?.FindFirst("UserName")?.Value;
+            string JwtId = _httpContextAccessor.HttpContext?.User?.FindFirst(JwtRegisteredClaimNames.Jti)?.Value;
             string Token = _httpContextAccessor.HttpContext?.Request.Headers["Authorization"];
 
             var result = new UserInfo
             {
                 UserId = UserId,
+                JwtId = JwtId,
                 UserName = userName,
                 Email = email,
                 Token = Token
@@ -65,7 +68,7 @@ namespace Asp.Net_Identity.Controllers
             try
             {
                 if(!ModelState.IsValid)
-                    return BadRequest("Some properties are not invalid");
+                    return BadRequest("Some properties are not valid");
 
                 #region Create employee
                 if (command.Id == 0)

@@ -3,8 +3,11 @@ using System.Collections.Generic;
 using System.IdentityModel.Tokens.Jwt;
 using System.Linq;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
+using Asp.Net_Identity.DataContext;
+using Asp.Net_Identity.Models;
 using Asp.Net_Identity.Service;
 using Asp.Net_Identity.ViewModels;
 using Microsoft.AspNetCore.Authorization;
@@ -22,12 +25,16 @@ namespace Asp.Net_Identity.Controllers
         private readonly UserManager<IdentityUser> _userManager;
         private readonly IConfiguration _configuration;
         private readonly IEmailService _mailService;
+        private readonly AppDbContext _context;
+        private readonly IHttpContextAccessor _httpContextAccessor;
 
-        public LoginController(UserManager<IdentityUser> userManager, IConfiguration configuration, IEmailService mailService)
+        public LoginController(UserManager<IdentityUser> userManager, IConfiguration configuration, IEmailService mailService, AppDbContext context, IHttpContextAccessor httpContextAccessor)
         {
             _userManager = userManager;
             _configuration = configuration;
             _mailService = mailService;
+            _context = context;
+            _httpContextAccessor = httpContextAccessor;
         }
 
         [HttpGet]
@@ -53,9 +60,49 @@ namespace Asp.Net_Identity.Controllers
             if(!result)
                 return BadRequest("Password is incorrect");
             
-            return Ok(GenerateToken(user));
+            var token = await GenerateToken(user);
+            string refReshToken = await GenerateRefreshToken(user.Id, token.JwtId);
+
+            return Ok(new AuthResponse
+            {
+                Token = token.Token,
+                RefreshToken = refReshToken
+            });
         }
 
+
+        [HttpPost]
+        public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenVm Vm)
+        {
+            if(!ModelState.IsValid)
+                return BadRequest("Invalid modelstate");
+
+            string UserId = _httpContextAccessor.HttpContext?.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            string JwtId = _httpContextAccessor.HttpContext?.User?.FindFirst(JwtRegisteredClaimNames.Jti)?.Value;
+
+            var refreshToken = _context.RefreshToken.FirstOrDefault(x => x.Token.Equals(Vm.RefreshToken) && x.UserId.Equals(UserId) && x.JwtId.Equals(JwtId));
+
+            if(refreshToken is null)
+                return BadRequest("Invalid token");
+            
+            if(refreshToken.ExpireDate < DateTime.Now)
+                return BadRequest("Token has expired!");
+            
+            var user = await _userManager.FindByIdAsync(UserId);
+            if(user is null)
+                return BadRequest("User not found");
+
+            var newToken = await GenerateToken(user);
+            refreshToken.Token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
+            refreshToken.ExpireDate = DateTime.Now.AddHours(6);
+            await _context.SaveChangesAsync();
+
+            return Ok(new AuthResponse
+            {
+                Token = newToken.Token,
+                RefreshToken = refreshToken.Token
+            });
+        }
 
         [HttpPost]
         public async Task<IActionResult> ForgetPassword(string email)
@@ -87,8 +134,8 @@ namespace Asp.Net_Identity.Controllers
 
 
 
-
-        private string GenerateToken(IdentityUser user)
+        
+        private async Task<(string Token, string JwtId)> GenerateToken(IdentityUser user)
         {
             var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]));
             var credientials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
@@ -97,17 +144,37 @@ namespace Asp.Net_Identity.Controllers
             {
                 new Claim(ClaimTypes.NameIdentifier, user.Id),
                 new Claim(ClaimTypes.Email, user.Email),
-                new Claim("UserName", user.UserName)
+                new Claim("UserName", user.UserName),
+                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
             };
 
             var token = new JwtSecurityToken(
                 _configuration["Jwt:Issuer"],
                 _configuration["Jwt:Audience"],
                 claims,
-                expires: DateTime.Now.AddMinutes(30),
+                expires: DateTime.Now.AddSeconds(30),
                 signingCredentials: credientials
             );
-            return new JwtSecurityTokenHandler().WriteToken(token);
+            var Token = new JwtSecurityTokenHandler().WriteToken(token);
+            return(Token, token.Id);
+        }
+
+        private async Task<string> GenerateRefreshToken(string UserId, string jwtId)
+        {
+            #region  RefreshToken
+            var refreshToken = new RefreshToken
+            {
+                UserId = UserId,
+                JwtId = jwtId,
+                Token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64)),
+                CreationDate = DateTime.Now,
+                ExpireDate = DateTime.Now.AddHours(6)
+            };
+            await _context.RefreshToken.AddAsync(refreshToken);
+            await _context.SaveChangesAsync();
+            #endregion
+
+            return refreshToken.Token;
         }
 
         private async Task<bool> ForgetPasswordAsync(string email)

@@ -14,5 +14,6 @@ namespace Asp.Net_Identity.DataContext
         {
         }
         public DbSet<Employees> Employees {get; set;}
+        public DbSet<RefreshToken> RefreshToken {get; set;}
     }
 }
