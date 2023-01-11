@@ -70,6 +70,24 @@ namespace Asp.Net_Identity.Controllers
             });
         }
 
+        [Authorize]
+        [HttpGet]
+        public async Task<IActionResult> Logout()
+        {
+            string UserId = _httpContextAccessor.HttpContext?.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+            if(String.IsNullOrWhiteSpace(UserId))
+                return Unauthorized();
+            
+            var refreshTokens = _context.RefreshToken.Where(x => x.UserId == UserId).ToList();
+            if(refreshTokens is null || refreshTokens.Count == 0)
+                return Unauthorized();
+
+            _context.RefreshToken.RemoveRange(refreshTokens);
+            await _context.SaveChangesAsync();
+
+            return Ok("Successfully logged out");
+        }
 
         [HttpPost]
         public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenVm Vm)
@@ -152,7 +170,7 @@ namespace Asp.Net_Identity.Controllers
                 _configuration["Jwt:Issuer"],
                 _configuration["Jwt:Audience"],
                 claims,
-                expires: DateTime.Now.AddSeconds(30),
+                expires: DateTime.Now.AddMinutes(2),
                 signingCredentials: credientials
             );
             var Token = new JwtSecurityTokenHandler().WriteToken(token);
